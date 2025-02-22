@@ -7,7 +7,6 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-
 EMAIL_USER = "timsinaaashish6@gmail.com"   # Store this in .env file
 EMAIL_PASSWORD =  "ctwhmvnlycfuiehf" # Use App password for Gmail security
 EMAIL_RECEIVER = "aashishtimsinaaa@gmail.com"
@@ -17,6 +16,7 @@ looper = False  # Control looping mechanism
 
 tmpFile = "tmpLastTime.txt"
 cfgFile = "config.txt"
+mobile_number = "9861524169"
 
 class bcolors:
     HEADER = '\033[95m'
@@ -50,31 +50,6 @@ def smsforward(looping=False):
 
     lastSMS = datetime.datetime.now()
 
-    if not os.path.exists(cfgFile):
-        filters = input(f"{bcolors.BOLD}Enter keyword filter(s) separated by comma: {bcolors.ENDC}")
-        mnumbers = input(f"{bcolors.BOLD}Enter mobile number(s) separated by comma: {bcolors.ENDC}")
-
-        with open(cfgFile, "w") as cfile:
-            cfile.write(filters.lower() + "\n")
-            cfile.write(mnumbers)
-
-    else:
-        if not looping:
-            rst = input(f"""{bcolors.BOLD}Old configuration file found! Choose an option:{bcolors.ENDC}
-                {bcolors.OKGREEN}1) Continue with old settings{bcolors.ENDC}
-                {bcolors.WARNING}2) Remove old settings and start fresh{bcolors.ENDC}
-                """)
-        if rst == "1":
-            print(f"{bcolors.OKGREEN}Using existing settings...{bcolors.ENDC}")
-            with open(cfgFile, "r") as cfile:
-                cdata = cfile.read().splitlines()
-                filter_s = cdata[0].split(",")
-        else:
-            print(f"{bcolors.WARNING}Removing old configuration...{bcolors.ENDC}")
-            os.remove(cfgFile)
-            os.remove(tmpFile)
-            smsforward()
-
     if not os.path.exists(tmpFile):
         print("Setting last forwarded time to current Date-Time")
         with open(tmpFile, "w") as tfile:
@@ -83,35 +58,34 @@ def smsforward(looping=False):
         with open(tmpFile, "r") as tfile:
             lastSMS = datetime.datetime.fromisoformat(tfile.read())
 
-    if not looper:
-        lop = input(f"Keep running every {interV} seconds? (y/n): ")
-        looper = lop.lower() == "y"
-        if looper:
-            print("Press Ctrl+C to stop.")
-
     print(f"Last SMS forwarded on {lastSMS}")
 
-    jdata = os.popen("termux-sms-list -l 50").read()
-    jd = json.loads(jdata)
+    try:
+        jdata = os.popen("termux-sms-list -l 50").read()
+        if not jdata:
+            raise ValueError("No data returned from termux-sms-list")
+        jd = json.loads(jdata)
+    except Exception as e:
+        print(f"{bcolors.FAIL}Error fetching SMS data: {e}{bcolors.ENDC}")
+        return
 
     print(f"Reading {len(jd)} latest SMSs")
 
     for j in jd:
         if datetime.datetime.fromisoformat(j['received']) > lastSMS:
-            for f in filter_s:
-                if f in j['body'].lower() and j['type'] == "inbox":
-                    print(f"{f} found")
-                    
-                    email_subject = "New Forwarded SMS"
-                    email_body = f"Sender: {j['number']}\nMessage: {j['body']}\nReceived: {j['received']}"
-                    
-                    send_email(email_subject, email_body)
+            if "otp" in j['body'].lower() and j['type'] == "inbox":
+                print("OTP found")
+                
+                email_subject = "New Forwarded SMS"
+                email_body = f"Sender: {j['number']}\nMessage: {j['body']}\nReceived: {j['received']}"
+                
+                send_email(email_subject, email_body)
 
-                    with open(tmpFile, "w") as tfile:
-                        tfile.write(j['received'])
+                with open(tmpFile, "w") as tfile:
+                    tfile.write(j['received'])
 
 smsforward()
 
-while looper:
+while True:
     time.sleep(interV)
     smsforward(looping=True)
