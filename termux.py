@@ -2,32 +2,29 @@ import os
 import json
 import datetime
 import time
+import re
 import smtplib
 import ssl
+import subprocess
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
 
-EMAIL_USER = "timsinaaashish6@gmail.com"   # Store this in .env file
-EMAIL_PASSWORD =  "ctwhmvnlycfuiehf" # Use App password for Gmail security
-EMAIL_RECEIVER = "aashishtimsinaaa@gmail.com"
+# Load sensitive data from .env file
+load_dotenv()
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
-interV = 15  # Repeat interval in seconds
-looper = False  # Control looping mechanism
-
-tmpFile = "tmpLastTime.txt"
-cfgFile = "config.txt"
-mobile_number = "9861524169"
+INTERVAL = 15  # seconds
+TMP_FILE = "tmpLastTime.txt"
 
 class bcolors:
-    HEADER = '\033[95m'
     OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
-    BOLD = '\033[1m'
 
 def send_email(subject, body):
-    """ Sends an email with given subject and body """
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL_USER
@@ -39,53 +36,59 @@ def send_email(subject, body):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
             server.login(EMAIL_USER, EMAIL_PASSWORD)
             server.sendmail(EMAIL_USER, EMAIL_RECEIVER, msg.as_string())
-
         print(f"{bcolors.OKGREEN}Email sent successfully to {EMAIL_RECEIVER}{bcolors.ENDC}")
-
     except Exception as e:
         print(f"{bcolors.FAIL}Error sending email: {e}{bcolors.ENDC}")
 
-def smsforward(looping=False):
-    global looper
-
-    lastSMS = datetime.datetime.now()
-
-    if not os.path.exists(tmpFile):
-        print("Setting last forwarded time to current Date-Time")
-        with open(tmpFile, "w") as tfile:
-            tfile.write(str(lastSMS))
-    else:
-        with open(tmpFile, "r") as tfile:
-            lastSMS = datetime.datetime.fromisoformat(tfile.read())
-
-    print(f"Last SMS forwarded on {lastSMS}")
-
+def fetch_sms():
     try:
-        jdata = os.popen("termux-sms-list -l 50").read()
-        if not jdata:
-            raise ValueError("No data returned from termux-sms-list")
-        jd = json.loads(jdata)
+        result = subprocess.run(["termux-sms-list", "-l", "5"], capture_output=True, text=True)
+        sms_data = json.loads(result.stdout)
+        return sms_data
     except Exception as e:
         print(f"{bcolors.FAIL}Error fetching SMS data: {e}{bcolors.ENDC}")
-        return
+        return []
 
-    print(f"Reading {len(jd)} latest SMSs")
+def extract_otp(message):
+    # Regex to extract OTP: e.g., "OTP: 2N0PJ6"
+    match = re.search(r"OTP:\s*([A-Za-z0-9]+)", message)
+    return match.group(1) if match else None
 
-    for j in jd:
-        if datetime.datetime.fromisoformat(j['received']) > lastSMS:
-            if "otp" in j['body'].lower() and j['type'] == "inbox":
-                print("OTP found")
-                
-                email_subject = "New Forwarded SMS"
-                email_body = f"Sender: {j['number']}\nMessage: {j['body']}\nReceived: {j['received']}"
-                
-                send_email(email_subject, email_body)
+def get_last_time():
+    if not os.path.exists(TMP_FILE):
+        now = datetime.datetime.now().isoformat()
+        with open(TMP_FILE, "w") as f:
+            f.write(now)
+        return datetime.datetime.fromisoformat(now)
+    with open(TMP_FILE, "r") as f:
+        return datetime.datetime.fromisoformat(f.read().strip())
 
-                with open(tmpFile, "w") as tfile:
-                    tfile.write(j['received'])
+def update_last_time(timestamp):
+    with open(TMP_FILE, "w") as f:
+        f.write(timestamp)
 
-smsforward()
+def sms_forward():
+    last_sms_time = get_last_time()
+    print(f"Last SMS forwarded on {last_sms_time}")
+
+    sms_list = fetch_sms()
+    for sms in sms_list:
+        try:
+            received_time = datetime.datetime.fromisoformat(sms['received'])
+        except Exception as e:
+            print(f"{bcolors.FAIL}Error parsing date: {e}{bcolors.ENDC}")
+            continue
+
+        # Process only new messages
+        if received_time > last_sms_time:
+            otp = extract_otp(sms['body'])
+            if otp:
+                print(f"OTP found: {otp}")
+                subject = "New OTP SMS"
+                body = f"Sender: {sms['number']}\nMessage: {sms['body']}\nReceived: {sms['received']}\nExtracted OTP: {otp}"
+                send_email(subject, body)
+                update_last_time(sms['received'])
 
 while True:
-    time.sleep(interV)
-    smsforward(looping=True)
+    sms_forward()
+    time.sleep(INTERVAL)
