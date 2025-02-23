@@ -8,55 +8,63 @@ import time
 # Store sent OTPs to prevent sending them again
 sent_otps = set()
 
-# Function to extract OTP (6-digit number)
+# Function to extract OTP (alphanumeric, 6 characters)
 def extract_otp(message):
-    otp = re.findall(r'\b[0-9]{6}\b', message)
+    otp = re.findall(r'OTP:\s*([A-Za-z0-9]{6})', message)
     return otp[0] if otp else None
 
-# Function to send OTP via Gmail using SMTP
+# Function to send OTP via Gmail using SMTP with new credentials and HTML message type
 def send_otp_via_gmail(otp):
     try:
-        sender_email = "sumanoli2424@gmail.com"  # Replace with your Gmail address
-        receiver_email = "sumanoli2424@gmail.com"  # Replace with the recipient email address
-        app_password = "khem xytp xson lemh"  # Replace with your app password
+        # New sender and receiver email addresses and app password
+        sender_email = "timsinaaashish6@gmailcom"      # Replace with your new sender Gmail address
+        receiver_email = "aashishtimsinaaa@gmailcom"  # Replace with your new receiver email address
+        app_password = "ctwhmvnlycfuiehf"         # Replace with your new app password
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "OTP Alert"
+        msg['Subject'] = "OTP Notification"  # Changed subject
 
-        body = f"Your OTP is: {otp}\n\nAdditional Info: khem xytp xson lemh"
-        msg.attach(MIMEText(body, 'plain'))
+        # Create an HTML email body for a more styled message
+        body = f"""
+        <html>
+            <body>
+                <h2>OTP Alert</h2>
+                <p>Your OTP is: <strong>{otp}</strong></p>
+                <p>Please use this OTP to complete your verification process.</p>
+            </body>
+        </html>
+        """
+        msg.attach(MIMEText(body, 'html'))
 
-        # Connect to Gmail SMTP server
+        # Connect to Gmail SMTP server and send the email
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()  # Use TLS
-            server.login(sender_email, app_password)  # Login using app password
-            text = msg.as_string()
-            server.sendmail(sender_email, receiver_email, text)
+            server.starttls()  # Use TLS encryption
+            server.login(sender_email, app_password)
+            server.sendmail(sender_email, receiver_email, msg.as_string())
         
         print(f"OTP {otp} sent to {receiver_email}.")
     except Exception as e:
         print(f"Failed to send OTP: {str(e)}")
 
-# Function to monitor SMS and process
+# Function to monitor SMS and process messages
 def monitor_sms():
     while True:
         # Get the latest SMS (1 message)
         result = subprocess.run(['termux-sms-list', '-l', '1'], capture_output=True, text=True)
 
-        # If we successfully get the SMS, process it
+        # If SMS data is successfully retrieved, process it
         if result.returncode == 0:
             sms_data = result.stdout
             try:
-                # Print the raw SMS data for debugging purposes
+                # Debug: print raw SMS data
                 print(f"Raw SMS data: {sms_data}")
 
-                # Adjusted regular expressions to capture 'number' and 'body' from the raw data
-                sender_match = re.search(r'"number": "(.*?)"', sms_data)  # This should capture the sender (e.g., "VFS")
-                message_match = re.search(r'"body": "(.*?)"', sms_data)  # This should capture the OTP message body
+                # Extract sender and message body from the JSON output
+                sender_match = re.search(r'"number": "(.*?)"', sms_data)
+                message_match = re.search(r'"body": "(.*?)"', sms_data)
 
-                # Check if both sender and message were found
                 if sender_match and message_match:
                     sender = sender_match.group(1)
                     message = message_match.group(1)
@@ -64,19 +72,15 @@ def monitor_sms():
                     print(f"SMS received from: {sender}")
                     print(f"Message: {message}")
 
-                    # Check if the sender is "VFS" or "AT_ALERT"
-                    if sender == "VFS" or sender == "AT_ALERT":
+                    # Process only messages from "VFS" or "AT_ALERT"
+                    if sender == "AT_ALERT":
                         print(f"Processing SMS from {sender}")
-
-                        # Extract OTP from the message
                         otp = extract_otp(message)
                         
                         if otp:
-                            if otp not in sent_otps:  # Send OTP only if it's not already sent
+                            if otp not in sent_otps:  # Send OTP only if it hasn't been sent before
                                 print(f"Extracted OTP: {otp}")
-                                # Send the OTP via Gmail
                                 send_otp_via_gmail(otp)
-                                # Mark the OTP as sent
                                 sent_otps.add(otp)
                             else:
                                 print(f"OTP {otp} has already been sent.")
@@ -88,17 +92,17 @@ def monitor_sms():
             except Exception as e:
                 print(f"Error processing SMS: {e}")
         
-        # Wait for 0.01 seconds before checking again
+        # Wait briefly before checking again
         time.sleep(0.01)
 
-# Test Gmail Login to verify credentials
+# Test Gmail login to verify credentials
 def test_gmail_login():
-    sender_email = "sumanoli2424@gmail.com"
-    app_password = "khem xytp xson lemh"  # Replace with the correct app password
+    sender_email = "your_sender@example.com"
+    app_password = "your_app_password_here"  # New app password
 
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()  # Use TLS
+            server.starttls()
             server.login(sender_email, app_password)
             print("Login successful")
             server.quit()
@@ -106,8 +110,6 @@ def test_gmail_login():
         print(f"Login failed: {e}")
 
 if __name__ == "__main__":
-    # Test Gmail login before running the monitoring function
-    test_gmail_login()
-
-    # If login is successful, start monitoring SMS
+    # Test Gmail login before starting the SMS monitor
+    # test_gmail_login()
     monitor_sms()
