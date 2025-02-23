@@ -51,8 +51,8 @@ def send_otp_via_gmail(otp):
 # Function to monitor SMS and process messages
 def monitor_sms():
     while True:
-        # Get the latest SMS (1 message)
-        result = subprocess.run(['termux-sms-list', '-l', '1'], capture_output=True, text=True)
+        # Get the latest unread SMS (1 message)
+        result = subprocess.run(['termux-sms-list', '-l', '1', '-u'], capture_output=True, text=True)
 
         # If SMS data is successfully retrieved, process it
         if result.returncode == 0:
@@ -95,21 +95,5 @@ def monitor_sms():
         # Wait briefly before checking again
         time.sleep(0.01)
 
-# Test Gmail login to verify credentials
-def test_gmail_login():
-    sender_email = "your_sender@example.com"
-    app_password = "your_app_password_here"  # New app password
-
-    try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(sender_email, app_password)
-            print("Login successful")
-            server.quit()
-    except Exception as e:
-        print(f"Login failed: {e}")
-
 if __name__ == "__main__":
-    # Test Gmail login before starting the SMS monitor
-    # test_gmail_login()
     monitor_sms()
