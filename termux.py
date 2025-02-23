@@ -11,7 +11,7 @@ sent_otps = set()
 
 def extract_otp(message):
     """
-    Extracts a 6-character alphanumeric OTP from the given message.
+    Extracts a 6-character alphanumeric OTP from the message.
     Expected format: 'OTP: <OTP_CODE>'
     """
     otp_matches = re.findall(r'OTP:\s*([A-Za-z0-9]{6})', message)
@@ -25,12 +25,12 @@ def extract_otp(message):
 def send_otp_via_gmail(otp):
     """
     Sends the OTP via Gmail using SMTP with an HTML-formatted email.
-    Update the sender_email, receiver_email, and app_password with your credentials.
+    Update sender_email, receiver_email, and app_password with your credentials.
     """
     try:
         sender_email = "timsinaaashish6@gmail.com"   # Corrected sender email address
         receiver_email = "aashishtimsinaaa@gmail.com"  # Corrected receiver email address
-        app_password = "ctwhmvnlycfuiehf"              # Replace with your actual app password
+        app_password = "ctwhmvnlycfuiehf"              # Replace with your app password
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
@@ -61,14 +61,14 @@ def send_otp_via_gmail(otp):
 
 def monitor_sms():
     """
-    Monitors unread SMS messages using termux-sms-list.
-    Processes messages from the sender "AT_ALERT" and extracts & sends the OTP.
+    Retrieves all SMS messages using termux-sms-list.
+    Processes messages from sender 'AT_ALERT' and extracts & emails OTPs.
     """
     while True:
-        # Retrieve the latest unread SMS message (-l 1 limits to 1, -u for unread)
-        result = subprocess.run(['termux-sms-list', '-l', '1', '-u'], capture_output=True, text=True)
+        # Retrieve all SMS messages (without limiting or filtering unread)
+        result = subprocess.run(['termux-sms-list'], capture_output=True, text=True)
         if result.returncode != 0:
-            print("[ERROR] Failed to retrieve SMS data")
+            print("[ERROR] Failed to retrieve SMS data.")
             time.sleep(2)
             continue
 
@@ -81,13 +81,9 @@ def monitor_sms():
                 continue
 
             for sms in sms_list:
-                # Check read status; 0 means unread
-                if sms.get("read", 1) != 0:
-                    continue
-
                 sender = sms.get("number", "")
                 message = sms.get("body", "")
-                print(f"[DEBUG] SMS received from: {sender}")
+                print(f"[DEBUG] SMS from: {sender}")
                 print(f"[DEBUG] Message: {message}")
 
                 # Process only messages from the specific sender "AT_ALERT"
@@ -98,9 +94,10 @@ def monitor_sms():
                             send_otp_via_gmail(otp)
                             sent_otps.add(otp)
                         else:
-                            print(f"[INFO] OTP {otp} has already been processed.")
+                            print(f"[INFO] OTP {otp} already processed.")
                     else:
-                        print("[DEBUG] No OTP found in this SMS message.")
+                        print("[DEBUG] No OTP found in this SMS.")
+
         except json.JSONDecodeError as je:
             print(f"[ERROR] JSON decoding error: {je}")
         except Exception as e:
