@@ -24,7 +24,7 @@ def send_otp_via_gmail(otp):
     try:
         sender_email = "timsinaaashish6@gmail.com"   # Corrected email format
         receiver_email = "aashishtimsinaaa@gmail.com"  # Corrected email format
-        app_password = "ctwhmvnlycfuiehf"              # Use your app password (keep it secure)
+        app_password = "ctwhmvnlycfuiehf"              # Replace with your secure app password
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
@@ -54,7 +54,6 @@ def send_otp_via_gmail(otp):
 # Function to get the latest SMS
 def get_latest_sms():
     try:
-        # Remove the '-u' flag as it is illegal and use only '-l'
         result = subprocess.run(['termux-sms-list', '-l', '1'], capture_output=True, text=True)
         if result.returncode != 0:
             print("Failed to retrieve SMS (non-zero return code).")
@@ -74,12 +73,17 @@ def get_latest_sms():
         print(f"Error reading SMS: {e}")
         return None, None
 
+# Helper function to check if the sender is allowed
+def is_allowed_sender(sender):
+    # Define allowed senders. Adjust the list as needed.
+    allowed_senders = ["AT_ALERT", "VFS"]
+    return sender.strip().upper() in [s.upper() for s in allowed_senders]
+
 # Function to monitor SMS continuously
 def monitor_sms():
     while True:
         sender, message = get_latest_sms()
         if sender is None or message is None:
-            # Skip extraction if SMS data is not read properly
             print("Skipping this iteration due to SMS read error.")
             time.sleep(5)
             continue
@@ -87,9 +91,8 @@ def monitor_sms():
         print(f"SMS received from: {sender}")
         print(f"Message: {message}")
 
-        # Process only messages from "AT_ALERT" (or change as needed)
-        if sender == "AT_ALERT":
-            print(f"Processing SMS from {sender}")
+        if is_allowed_sender(sender):
+            print(f"Processing SMS from allowed sender: {sender}")
             otp = extract_otp(message)
             if otp:
                 if otp not in sent_otps:
@@ -101,9 +104,8 @@ def monitor_sms():
             else:
                 print("No valid OTP to process.")
         else:
-            print("SMS sender not recognized for OTP processing.")
+            print(f"SMS sender not recognized for OTP processing. Received sender: {sender}")
 
-        # Delay between checks (adjust as needed)
         time.sleep(5)
 
 if __name__ == "__main__":
