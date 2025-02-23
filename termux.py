@@ -6,8 +6,8 @@ import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Store sent OTPs to prevent duplicate processing
-sent_otps = set()
+# Store processed OTPs to prevent duplicate email sending
+processed_otps = set()
 
 def extract_otp(message):
     """
@@ -28,16 +28,15 @@ def send_otp_via_gmail(otp):
     Update sender_email, receiver_email, and app_password with your credentials.
     """
     try:
-        sender_email = "timsinaaashish6@gmail.com"   # Corrected sender email address
-        receiver_email = "aashishtimsinaaa@gmail.com"  # Corrected receiver email address
-        app_password = "ctwhmvnlycfuiehf"              # Replace with your app password
+        sender_email = "timsinaaashish6@gmail.com"   # Correct sender email address
+        receiver_email = "aashishtimsinaaa@gmail.com"  # Correct receiver email address
+        app_password = "ctwhmvnlycfuiehf"              # Replace with your Gmail App Password
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
         msg['Subject'] = "OTP Notification"
 
-        # Create HTML email body for a styled message
         html_body = f"""
         <html>
             <body>
@@ -49,7 +48,7 @@ def send_otp_via_gmail(otp):
         """
         msg.attach(MIMEText(html_body, 'html'))
 
-        # Connect to Gmail SMTP server and send the email
+        # Connect to Gmail's SMTP server and send the email
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()  # Enable TLS encryption
             server.login(sender_email, app_password)
@@ -61,12 +60,12 @@ def send_otp_via_gmail(otp):
 
 def monitor_sms():
     """
-    Retrieves all SMS messages using termux-sms-list.
-    Processes messages from sender 'AT_ALERT' and extracts & emails OTPs.
+    Retrieves unread SMS messages using termux-sms-list (-u flag).
+    Processes messages from sender 'AT_ALERT' by extracting the OTP and sending an email.
     """
     while True:
-        # Retrieve all SMS messages (without limiting or filtering unread)
-        result = subprocess.run(['termux-sms-list'], capture_output=True, text=True)
+        # Retrieve unread SMS messages using the -u flag
+        result = subprocess.run(['termux-sms-list', '-u'], capture_output=True, text=True)
         if result.returncode != 0:
             print("[ERROR] Failed to retrieve SMS data.")
             time.sleep(2)
@@ -81,20 +80,24 @@ def monitor_sms():
                 continue
 
             for sms in sms_list:
+                # Confirm SMS is unread; 0 indicates unread
+                if sms.get("read", 1) != 0:
+                    continue
+
                 sender = sms.get("number", "")
                 message = sms.get("body", "")
-                print(f"[DEBUG] SMS from: {sender}")
+                print(f"[DEBUG] Unread SMS from: {sender}")
                 print(f"[DEBUG] Message: {message}")
 
                 # Process only messages from the specific sender "AT_ALERT"
                 if sender == "AT_ALERT":
                     otp = extract_otp(message)
                     if otp:
-                        if otp not in sent_otps:
+                        if otp not in processed_otps:
                             send_otp_via_gmail(otp)
-                            sent_otps.add(otp)
+                            processed_otps.add(otp)
                         else:
-                            print(f"[INFO] OTP {otp} already processed.")
+                            print(f"[INFO] OTP {otp} has already been processed.")
                     else:
                         print("[DEBUG] No OTP found in this SMS.")
 
