@@ -1,33 +1,44 @@
 import subprocess
 import re
+import json
 import smtplib
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import time
 
-# Store sent OTPs to prevent sending them again
+# Store sent OTPs to prevent duplicate processing
 sent_otps = set()
 
-# Function to extract OTP (alphanumeric, 6 characters)
 def extract_otp(message):
-    otp = re.findall(r'OTP:\s*([A-Za-z0-9]{6})', message)
-    return otp[0] if otp else None
+    """
+    Extracts a 6-character alphanumeric OTP from the given message.
+    Expected format: 'OTP: <OTP_CODE>'
+    """
+    otp_matches = re.findall(r'OTP:\s*([A-Za-z0-9]{6})', message)
+    if otp_matches:
+        print(f"[DEBUG] Extracted OTP: {otp_matches[0]}")
+        return otp_matches[0]
+    else:
+        print("[DEBUG] No OTP found in the message.")
+        return None
 
-# Function to send OTP via Gmail using SMTP with new credentials and HTML message type
 def send_otp_via_gmail(otp):
+    """
+    Sends the OTP via Gmail using SMTP with an HTML-formatted email.
+    Update the sender_email, receiver_email, and app_password with your credentials.
+    """
     try:
-        # New sender and receiver email addresses and app password
-        sender_email = "timsinaaashish6@gmailcom"      # Replace with your new sender Gmail address
-        receiver_email = "aashishtimsinaaa@gmailcom"  # Replace with your new receiver email address
-        app_password = "ctwhmvnlycfuiehf"         # Replace with your new app password
+        sender_email = "timsinaaashish6@gmail.com"   # Corrected sender email address
+        receiver_email = "aashishtimsinaaa@gmail.com"  # Corrected receiver email address
+        app_password = "ctwhmvnlycfuiehf"              # Replace with your actual app password
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "OTP Notification"  # Changed subject
+        msg['Subject'] = "OTP Notification"
 
-        # Create an HTML email body for a more styled message
-        body = f"""
+        # Create HTML email body for a styled message
+        html_body = f"""
         <html>
             <body>
                 <h2>OTP Alert</h2>
@@ -36,64 +47,67 @@ def send_otp_via_gmail(otp):
             </body>
         </html>
         """
-        msg.attach(MIMEText(body, 'html'))
+        msg.attach(MIMEText(html_body, 'html'))
 
         # Connect to Gmail SMTP server and send the email
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()  # Use TLS encryption
+            server.starttls()  # Enable TLS encryption
             server.login(sender_email, app_password)
             server.sendmail(sender_email, receiver_email, msg.as_string())
-        
-        print(f"OTP {otp} sent to {receiver_email}.")
+
+        print(f"[INFO] OTP {otp} sent to {receiver_email}.")
     except Exception as e:
-        print(f"Failed to send OTP: {str(e)}")
+        print(f"[ERROR] Failed to send OTP: {e}")
 
-# Function to monitor SMS and process messages
 def monitor_sms():
+    """
+    Monitors unread SMS messages using termux-sms-list.
+    Processes messages from the sender "AT_ALERT" and extracts & sends the OTP.
+    """
     while True:
-        # Get the latest unread SMS (1 message)
+        # Retrieve the latest unread SMS message (-l 1 limits to 1, -u for unread)
         result = subprocess.run(['termux-sms-list', '-l', '1', '-u'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print("[ERROR] Failed to retrieve SMS data")
+            time.sleep(2)
+            continue
 
-        # If SMS data is successfully retrieved, process it
-        if result.returncode == 0:
-            sms_data = result.stdout
-            try:
-                # Debug: print raw SMS data
-                print(f"Raw SMS data: {sms_data}")
+        sms_data = result.stdout
+        try:
+            sms_list = json.loads(sms_data)
+            if not isinstance(sms_list, list):
+                print("[ERROR] Unexpected SMS data format.")
+                time.sleep(2)
+                continue
 
-                # Extract sender and message body from the JSON output
-                sender_match = re.search(r'"number": "(.*?)"', sms_data)
-                message_match = re.search(r'"body": "(.*?)"', sms_data)
+            for sms in sms_list:
+                # Check read status; 0 means unread
+                if sms.get("read", 1) != 0:
+                    continue
 
-                if sender_match and message_match:
-                    sender = sender_match.group(1)
-                    message = message_match.group(1)
+                sender = sms.get("number", "")
+                message = sms.get("body", "")
+                print(f"[DEBUG] SMS received from: {sender}")
+                print(f"[DEBUG] Message: {message}")
 
-                    print(f"SMS received from: {sender}")
-                    print(f"Message: {message}")
-
-                    # Process only messages from "VFS" or "AT_ALERT"
-                    if sender == "AT_ALERT":
-                        print(f"Processing SMS from {sender}")
-                        otp = extract_otp(message)
-                        
-                        if otp:
-                            if otp not in sent_otps:  # Send OTP only if it hasn't been sent before
-                                print(f"Extracted OTP: {otp}")
-                                send_otp_via_gmail(otp)
-                                sent_otps.add(otp)
-                            else:
-                                print(f"OTP {otp} has already been sent.")
+                # Process only messages from the specific sender "AT_ALERT"
+                if sender == "AT_ALERT":
+                    otp = extract_otp(message)
+                    if otp:
+                        if otp not in sent_otps:
+                            send_otp_via_gmail(otp)
+                            sent_otps.add(otp)
                         else:
-                            print(f"No OTP found in message from {sender}")
-                else:
-                    print("Error: Could not find 'number' or 'body' in the SMS data.")
+                            print(f"[INFO] OTP {otp} has already been processed.")
+                    else:
+                        print("[DEBUG] No OTP found in this SMS message.")
+        except json.JSONDecodeError as je:
+            print(f"[ERROR] JSON decoding error: {je}")
+        except Exception as e:
+            print(f"[ERROR] Exception during SMS processing: {e}")
 
-            except Exception as e:
-                print(f"Error processing SMS: {e}")
-        
-        # Wait briefly before checking again
-        time.sleep(0.01)
+        # Pause before checking for new messages
+        time.sleep(2)
 
 if __name__ == "__main__":
     monitor_sms()
